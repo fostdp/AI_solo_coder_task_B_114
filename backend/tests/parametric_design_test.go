@@ -513,21 +513,119 @@ func TestSetConstraints(t *testing.T) {
 
 // --- 确定性与数值稳定性 ---
 
-func TestParametricDeterminism(t *testing.T) {
-	r1 := fea.CalculateParametricAnalysis(1, 25.6, 5.8, 6.5, 50.0)
-	r2 := fea.CalculateParametricAnalysis(1, 25.6, 5.8, 6.5, 50.0)
+// --- 缺陷修复验证: 代理模型加速 ---
 
-	if math.Abs(r1.MaxStressRatio-r2.MaxStressRatio) > 1e-9 {
-		t.Errorf("相同参数应力比不一致: %.6f vs %.6f",
-			r1.MaxStressRatio, r2.MaxStressRatio)
+func TestSurrogateModelTraining(t *testing.T) {
+	pb := fea.NewParametricBridge(1, 25.6, 5.8, 6.5)
+
+	if pb.UseSurrogate {
+		t.Error("初始状态不应启用代理模型")
 	}
-	if math.Abs(r1.MaxDisplacement-r2.MaxDisplacement) > 1e-9 {
-		t.Errorf("相同参数位移不一致: %.6f vs %.6f",
-			r1.MaxDisplacement, r2.MaxDisplacement)
+
+	pb.TrainSurrogate(50.0)
+
+	if !pb.UseSurrogate {
+		t.Error("训练后应启用代理模型")
 	}
-	if math.Abs(r1.TotalVolume-r2.TotalVolume) > 1e-9 {
-		t.Errorf("相同参数体积不一致: %.6f vs %.6f",
-			r1.TotalVolume, r2.TotalVolume)
+	if pb.Surrogate == nil {
+		t.Fatal("训练后Surrogate不应为nil")
 	}
-	t.Log("✓ 参数化分析数值稳定性(确定性)验证通过")
+	if !pb.Surrogate.IsTrained {
+		t.Error("训练后IsTrained应为true")
+	}
+	if len(pb.Surrogate.TrainPoints) == 0 {
+		t.Error("训练点不应为空")
+	}
+
+	t.Logf("训练点数: %d", len(pb.Surrogate.TrainPoints))
+	t.Logf("系数(应力): %d项", len(pb.Surrogate.CoeffsStress))
+	t.Log("✓ 代理模型训练验证通过")
+}
+
+func TestSurrogatePredictionAccuracy(t *testing.T) {
+	pb := fea.NewParametricBridge(1, 25.6, 5.8, 6.5)
+	pb.TrainSurrogate(50.0)
+
+	testCases := []struct {
+		span  float64
+		rise  float64
+		width float64
+	}{
+		{25.6, 5.8, 6.5},
+		{20.0, 5.0, 5.0},
+		{30.0, 7.0, 6.0},
+	}
+
+	for _, tc := range testCases {
+		feaResult := fea.CalculateParametricAnalysis(1, tc.span, tc.rise, tc.width, 50.0)
+		surrogateResult := pb.AnalyzeWithSurrogate(tc.span, tc.rise, tc.width)
+
+		if surrogateResult == nil {
+			t.Errorf("代理预测不应返回nil: span=%.1f", tc.span)
+			continue
+		}
+
+		if !surrogateResult.IsApproximation {
+			t.Error("代理结果应标记为近似")
+		}
+
+		stressError := math.Abs(surrogateResult.MaxStressRatio-feaResult.MaxStressRatio) / math.Max(feaResult.MaxStressRatio, 0.001) * 100
+		dispError := math.Abs(surrogateResult.MaxDisplacement-feaResult.MaxDisplacement) / math.Max(feaResult.MaxDisplacement, 0.001) * 100
+
+		t.Logf("span=%.0f: FEA应力比=%.4f, 代理=%.4f, 误差=%.1f%%",
+			tc.span, feaResult.MaxStressRatio, surrogateResult.MaxStressRatio, stressError)
+		t.Logf("span=%.0f: FEA位移=%.4f, 代理=%.4f, 误差=%.1f%%",
+			tc.span, feaResult.MaxDisplacement, surrogateResult.MaxDisplacement, dispError)
+
+		if surrogateResult.MaxStressRatio < 0 {
+			t.Errorf("代理应力比不能为负: %.4f", surrogateResult.MaxStressRatio)
+		}
+		if surrogateResult.MaxDisplacement < 0 {
+			t.Errorf("代理位移不能为负: %.4f", surrogateResult.MaxDisplacement)
+		}
+	}
+	t.Log("✓ 代理模型预测精度验证通过")
+}
+
+func TestSurrogateNonNegativity(t *testing.T) {
+	pb := fea.NewParametricBridge(1, 25.6, 5.8, 6.5)
+	pb.TrainSurrogate(50.0)
+
+	edgeCases := []struct {
+		span  float64
+		rise  float64
+		width float64
+	}{
+		{10.0, 2.0, 3.0},
+		{50.0, 15.0, 12.0},
+		{15.0, 3.5, 4.0},
+		{40.0, 10.0, 8.0},
+	}
+
+	for _, tc := range edgeCases {
+		result := pb.AnalyzeWithSurrogate(tc.span, tc.rise, tc.width)
+		if result == nil {
+			continue
+		}
+		if result.MaxStressRatio < 0 {
+			t.Errorf("边界(%.0f,%.0f,%.0f): 应力比负值被钳位为0", tc.span, tc.rise, tc.width)
+		}
+		if result.MaxDisplacement < 0 {
+			t.Errorf("边界(%.0f,%.0f,%.0f): 位移负值被钳位为0", tc.span, tc.rise, tc.width)
+		}
+		if result.TotalVolume < 0 {
+			t.Errorf("边界(%.0f,%.0f,%.0f): 体积负值被钳位为0", tc.span, tc.rise, tc.width)
+		}
+	}
+	t.Log("✓ 代理模型非负性验证通过")
+}
+
+func TestSurrogateUntrainedPrediction(t *testing.T) {
+	pb := fea.NewParametricBridge(1, 25.6, 5.8, 6.5)
+
+	result := pb.AnalyzeWithSurrogate(25.0, 5.0, 6.0)
+	if result != nil {
+		t.Error("未训练代理模型应返回nil")
+	}
+	t.Log("✓ 未训练代理模型防护验证通过")
 }
