@@ -10,35 +10,39 @@ import (
 type ReinforcementMethod string
 
 const (
-	MethodIronHoop      ReinforcementMethod = "iron_hoop"
-	MethodCFRP          ReinforcementMethod = "cfrp"
-	MethodSteelPlate    ReinforcementMethod = "steel_plate"
-	MethodWoodenSplice  ReinforcementMethod = "wooden_splice"
-	MethodCombined      ReinforcementMethod = "combined"
+	MethodIronHoop     ReinforcementMethod = "iron_hoop"
+	MethodCFRP         ReinforcementMethod = "cfrp"
+	MethodSteelPlate   ReinforcementMethod = "steel_plate"
+	MethodWoodenSplice ReinforcementMethod = "wooden_splice"
+	MethodCombined     ReinforcementMethod = "combined"
 )
 
 type ReinforcementParams struct {
-	Method          ReinforcementMethod
-	CFRPThickness   float64
-	CFRPLayers      int
-	IronHoopCount   int
-	IronHoopWidth   float64
+	Method              ReinforcementMethod
+	CFRPThickness       float64
+	CFRPLayers          int
+	IronHoopCount       int
+	IronHoopWidth       float64
 	SteelPlateThickness float64
-	WoodenSpliceLength float64
-	TargetNodes     []int
+	WoodenSpliceLength  float64
+	TargetNodes         []int
 }
 
 type ReinforcementResult struct {
-	方案ID             int
-	Params             ReinforcementParams
-	成本IncreaseFactor float64
-	刚度提升率         float64
-	强度提升率         float64
-	耐久性提升率       float64
-	施工复杂度         float64
-	历史风貌影响度     float64
-	综合评分           float64
-	ParetoOptimal     bool
+	方案ID               int
+	Params               ReinforcementParams
+	成本IncreaseFactor   float64
+	刚度提升率           float64
+	强度提升率           float64
+	耐久性提升率         float64
+	施工复杂度           float64
+	历史风貌影响度       float64
+	综合评分             float64
+	ParetoOptimal        bool
+	界面粘结系数         float64
+	剥离风险             float64
+	有效刚度提升率       float64
+	有效强度提升率       float64
 }
 
 type MultiObjectiveOptimizer struct {
@@ -50,11 +54,11 @@ type MultiObjectiveOptimizer struct {
 }
 
 type Individual struct {
-	Genes     []float64
-	Fitness   []float64
+	Genes           []float64
+	Fitness         []float64
 	CrowdingDistance float64
-	Dominated bool
-	Rank      int
+	Dominated       bool
+	Rank            int
 }
 
 var methodCharacteristics = map[ReinforcementMethod]struct {
@@ -65,51 +69,37 @@ var methodCharacteristics = map[ReinforcementMethod]struct {
 	BaseComplexity     float64
 	HeritageImpact     float64
 	Description        string
+	InterfaceBondFactor float64
 }{
 	MethodIronHoop: {
-		BaseCostFactor:     1.2,
-		BaseStiffnessGain:  0.15,
-		BaseStrengthGain:   0.20,
-		BaseDurabilityGain: 0.25,
-		BaseComplexity:     0.3,
-		HeritageImpact:     0.4,
-		Description:        "传统铁箍加固，历史真实性较好",
+		BaseCostFactor: 1.2, BaseStiffnessGain: 0.15, BaseStrengthGain: 0.20,
+		BaseDurabilityGain: 0.25, BaseComplexity: 0.3, HeritageImpact: 0.4,
+		Description: "传统铁箍加固，历史真实性较好",
+		InterfaceBondFactor: 0.95,
 	},
 	MethodCFRP: {
-		BaseCostFactor:     2.5,
-		BaseStiffnessGain:  0.35,
-		BaseStrengthGain:   0.40,
-		BaseDurabilityGain: 0.45,
-		BaseComplexity:     0.6,
-		HeritageImpact:     0.2,
-		Description:        "碳纤维布加固，高效且隐蔽",
+		BaseCostFactor: 2.5, BaseStiffnessGain: 0.35, BaseStrengthGain: 0.40,
+		BaseDurabilityGain: 0.45, BaseComplexity: 0.6, HeritageImpact: 0.2,
+		Description: "碳纤维布加固，高效且隐蔽",
+		InterfaceBondFactor: 0.85,
 	},
 	MethodSteelPlate: {
-		BaseCostFactor:     1.8,
-		BaseStiffnessGain:  0.30,
-		BaseStrengthGain:   0.35,
-		BaseDurabilityGain: 0.30,
-		BaseComplexity:     0.5,
-		HeritageImpact:     0.5,
-		Description:        "钢板粘贴加固，刚度提升显著",
+		BaseCostFactor: 1.8, BaseStiffnessGain: 0.30, BaseStrengthGain: 0.35,
+		BaseDurabilityGain: 0.30, BaseComplexity: 0.5, HeritageImpact: 0.5,
+		Description: "钢板粘贴加固，刚度提升显著",
+		InterfaceBondFactor: 0.75,
 	},
 	MethodWoodenSplice: {
-		BaseCostFactor:     1.5,
-		BaseStiffnessGain:  0.10,
-		BaseStrengthGain:   0.15,
-		BaseDurabilityGain: 0.20,
-		BaseComplexity:     0.4,
-		HeritageImpact:     0.1,
-		Description:        "木榫拼接加固，历史真实性最佳",
+		BaseCostFactor: 1.5, BaseStiffnessGain: 0.10, BaseStrengthGain: 0.15,
+		BaseDurabilityGain: 0.20, BaseComplexity: 0.4, HeritageImpact: 0.1,
+		Description: "木榫拼接加固，历史真实性最佳",
+		InterfaceBondFactor: 0.98,
 	},
 	MethodCombined: {
-		BaseCostFactor:     3.0,
-		BaseStiffnessGain:  0.50,
-		BaseStrengthGain:   0.55,
-		BaseDurabilityGain: 0.50,
-		BaseComplexity:     0.8,
-		HeritageImpact:     0.3,
-		Description:        "铁箍+CFRP组合加固，综合性能最优",
+		BaseCostFactor: 3.0, BaseStiffnessGain: 0.50, BaseStrengthGain: 0.55,
+		BaseDurabilityGain: 0.50, BaseComplexity: 0.8, HeritageImpact: 0.3,
+		Description: "铁箍+CFRP组合加固，综合性能最优",
+		InterfaceBondFactor: 0.90,
 	},
 }
 
@@ -184,6 +174,42 @@ func (mo *MultiObjectiveOptimizer) DecodeParams(genes []float64) ReinforcementPa
 	return params
 }
 
+func (mo *MultiObjectiveOptimizer) calculateDebondingRisk(params ReinforcementParams, chars struct {
+	BaseCostFactor     float64
+	BaseStiffnessGain  float64
+	BaseStrengthGain   float64
+	BaseDurabilityGain float64
+	BaseComplexity     float64
+	HeritageImpact     float64
+	Description        string
+	InterfaceBondFactor float64
+}) float64 {
+	baseRisk := 1.0 - chars.InterfaceBondFactor
+
+	thicknessFactor := 0.0
+	if params.Method == MethodCFRP {
+		thicknessFactor = params.CFRPThickness * 0.02 + float64(params.CFRPLayers)*0.015
+	} else if params.Method == MethodSteelPlate {
+		thicknessFactor = params.SteelPlateThickness * 0.005
+	} else if params.Method == MethodCombined {
+		thicknessFactor = params.CFRPThickness*0.01 + params.SteelPlateThickness*0.003
+	}
+
+	layerPenalty := 0.0
+	if params.CFRPLayers > 3 {
+		layerPenalty = float64(params.CFRPLayers-3) * 0.03
+	}
+
+	debondingRisk := baseRisk + thicknessFactor + layerPenalty
+	if debondingRisk > 0.8 {
+		debondingRisk = 0.8
+	}
+	if debondingRisk < 0 {
+		debondingRisk = 0
+	}
+	return debondingRisk
+}
+
 func (mo *MultiObjectiveOptimizer) evaluateIndividual(genes []float64, originalStiffness float64, originalStrength float64, memberCount int) ReinforcementResult {
 	params := mo.DecodeParams(genes)
 	chars := methodCharacteristics[params.Method]
@@ -205,7 +231,18 @@ func (mo *MultiObjectiveOptimizer) evaluateIndividual(genes []float64, originalS
 
 	heritageImpact := chars.HeritageImpact
 
-	overallScore := (stiffnessGain*0.25 + strengthGain*0.25 + durabilityGain*0.2 +
+	interfaceBond := chars.InterfaceBondFactor
+
+	debondingRisk := mo.calculateDebondingRisk(params, chars)
+
+	serviceLifeReduction := debondingRisk * 0.5
+
+	effectiveBondFactor := interfaceBond * (1.0 - serviceLifeReduction)
+
+	effectiveStiffnessGain := stiffnessGain * effectiveBondFactor
+	effectiveStrengthGain := strengthGain * effectiveBondFactor
+
+	overallScore := (effectiveStiffnessGain*0.25 + effectiveStrengthGain*0.25 + durabilityGain*0.2 +
 		(1-complexity)*0.15 + (1-heritageImpact)*0.15)
 
 	return ReinforcementResult{
@@ -217,6 +254,10 @@ func (mo *MultiObjectiveOptimizer) evaluateIndividual(genes []float64, originalS
 		施工复杂度:         complexity,
 		历史风貌影响度:     heritageImpact,
 		综合评分:           overallScore,
+		界面粘结系数:       interfaceBond,
+		剥离风险:           debondingRisk,
+		有效刚度提升率:     effectiveStiffnessGain,
+		有效强度提升率:     effectiveStrengthGain,
 	}
 }
 
@@ -372,8 +413,8 @@ func (mo *MultiObjectiveOptimizer) Optimize(originalStiffness float64, originalS
 		}
 		result := mo.evaluateIndividual(genes, originalStiffness, originalStrength, memberCount)
 		fitness := []float64{
-			result.刚度提升率,
-			result.强度提升率,
+			result.有效刚度提升率,
+			result.有效强度提升率,
 			result.耐久性提升率,
 			1.0 - result.施工复杂度,
 			1.0 - result.历史风貌影响度,
@@ -414,8 +455,8 @@ func (mo *MultiObjectiveOptimizer) Optimize(originalStiffness float64, originalS
 			mo.mutate(child)
 			result := mo.evaluateIndividual(child.Genes, originalStiffness, originalStrength, memberCount)
 			child.Fitness = []float64{
-				result.刚度提升率,
-				result.强度提升率,
+				result.有效刚度提升率,
+				result.有效强度提升率,
 				result.耐久性提升率,
 				1.0 - result.施工复杂度,
 				1.0 - result.历史风貌影响度,
@@ -452,15 +493,16 @@ func GetReinforcementMethods() []map[string]interface{} {
 	methods := make([]map[string]interface{}, 0)
 	for m, chars := range methodCharacteristics {
 		methods = append(methods, map[string]interface{}{
-			"id":           string(m),
-			"name":         getMethodName(m),
-			"description":  chars.Description,
-			"cost_factor":  chars.BaseCostFactor,
-			"stiffness_gain": chars.BaseStiffnessGain,
-			"strength_gain": chars.BaseStrengthGain,
-			"durability_gain": chars.BaseDurabilityGain,
-			"complexity":   chars.BaseComplexity,
-			"heritage_impact": chars.HeritageImpact,
+			"id":               string(m),
+			"name":             getMethodName(m),
+			"description":      chars.Description,
+			"cost_factor":      chars.BaseCostFactor,
+			"stiffness_gain":   chars.BaseStiffnessGain,
+			"strength_gain":    chars.BaseStrengthGain,
+			"durability_gain":  chars.BaseDurabilityGain,
+			"complexity":       chars.BaseComplexity,
+			"heritage_impact":  chars.HeritageImpact,
+			"bond_factor":      chars.InterfaceBondFactor,
 		})
 	}
 	return methods
