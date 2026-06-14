@@ -176,10 +176,10 @@ func (app *App) setupRoutes(r *gin.Engine) {
 				"structural_simulator": "running",
 				"craft_identifier":     "running",
 				"alarm_mqtt":           "running",
-				"dynamic_load":         "running",
-				"historical_comparison": "running",
-				"reinforcement_opt":    "running",
-				"parametric_design":    "running",
+				"moving_load_simulator": "running",
+				"bridge_comparator":    "running",
+				"retrofit_optimizer":   "running",
+				"public_engagement":    "running",
 			},
 		})
 	})
@@ -299,7 +299,7 @@ func main() {
 		log.Printf("  Health:   http://localhost:%s/health", port)
 		log.Printf("  Metrics:  http://localhost:9090/metrics")
 		log.Printf("  pprof:    http://localhost:6060/debug/pprof")
-		log.Println("Modules: dtu_receiver | structural_simulator | craft_identifier | alarm_mqtt | dynamic_load | historical_comparison | reinforcement_opt | parametric_design")
+		log.Println("Modules: dtu_receiver | structural_simulator | craft_identifier | alarm_mqtt | moving_load_simulator | bridge_comparator | retrofit_optimizer | public_engagement")
 		if err := app.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
