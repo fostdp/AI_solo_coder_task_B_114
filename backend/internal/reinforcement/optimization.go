@@ -128,7 +128,7 @@ func (mo *MultiObjectiveOptimizer) SetSeed(seed int64) {
 	rand.Seed(seed)
 }
 
-func (mo *MultiObjectiveOptimizer) encodeParams(params ReinforcementParams) []float64 {
+func (mo *MultiObjectiveOptimizer) EncodeParams(params ReinforcementParams) []float64 {
 	genes := make([]float64, 8)
 
 	methodIdx := 0.0
@@ -157,7 +157,7 @@ func (mo *MultiObjectiveOptimizer) encodeParams(params ReinforcementParams) []fl
 	return genes
 }
 
-func (mo *MultiObjectiveOptimizer) decodeParams(genes []float64) ReinforcementParams {
+func (mo *MultiObjectiveOptimizer) DecodeParams(genes []float64) ReinforcementParams {
 	params := ReinforcementParams{}
 
 	methodGene := genes[0]
@@ -185,7 +185,7 @@ func (mo *MultiObjectiveOptimizer) decodeParams(genes []float64) ReinforcementPa
 }
 
 func (mo *MultiObjectiveOptimizer) evaluateIndividual(genes []float64, originalStiffness float64, originalStrength float64, memberCount int) ReinforcementResult {
-	params := mo.decodeParams(genes)
+	params := mo.DecodeParams(genes)
 	chars := methodCharacteristics[params.Method]
 
 	costFactor := chars.BaseCostFactor *
@@ -220,7 +220,7 @@ func (mo *MultiObjectiveOptimizer) evaluateIndividual(genes []float64, originalS
 	}
 }
 
-func (mo *MultiObjectiveOptimizer) dominates(a, b []float64) bool {
+func (mo *MultiObjectiveOptimizer) Dominates(a, b []float64) bool {
 	betterOrEqual := true
 	strictlyBetter := false
 	for i := range a {
@@ -235,7 +235,7 @@ func (mo *MultiObjectiveOptimizer) dominates(a, b []float64) bool {
 	return betterOrEqual && strictlyBetter
 }
 
-func (mo *MultiObjectiveOptimizer) fastNonDominatedSort(population []Individual) [][]Individual {
+func (mo *MultiObjectiveOptimizer) FastNonDominatedSort(population []Individual) [][]Individual {
 	fronts := make([][]Individual, 0)
 	dominationCount := make([]int, len(population))
 	dominatedSet := make([][]int, len(population))
@@ -247,9 +247,9 @@ func (mo *MultiObjectiveOptimizer) fastNonDominatedSort(population []Individual)
 			if p == q {
 				continue
 			}
-			if mo.dominates(population[p].Fitness, population[q].Fitness) {
+			if mo.Dominates(population[p].Fitness, population[q].Fitness) {
 				dominatedSet[p] = append(dominatedSet[p], q)
-			} else if mo.dominates(population[q].Fitness, population[p].Fitness) {
+			} else if mo.Dominates(population[q].Fitness, population[p].Fitness) {
 				dominationCount[p]++
 			}
 		}
@@ -283,7 +283,7 @@ func (mo *MultiObjectiveOptimizer) fastNonDominatedSort(population []Individual)
 	return fronts
 }
 
-func (mo *MultiObjectiveOptimizer) crowdingDistance(front []Individual) {
+func (mo *MultiObjectiveOptimizer) CrowdingDistance(front []Individual) {
 	n := len(front)
 	if n == 0 {
 		return
@@ -386,9 +386,9 @@ func (mo *MultiObjectiveOptimizer) Optimize(originalStiffness float64, originalS
 	}
 
 	for gen := 0; gen < mo.MaxGenerations; gen++ {
-		fronts := mo.fastNonDominatedSort(population)
+		fronts := mo.FastNonDominatedSort(population)
 		for _, front := range fronts {
-			mo.crowdingDistance(front)
+			mo.CrowdingDistance(front)
 		}
 
 		newPopulation := make([]Individual, 0, mo.PopulationSize)
@@ -427,7 +427,7 @@ func (mo *MultiObjectiveOptimizer) Optimize(originalStiffness float64, originalS
 		population = offspring
 	}
 
-	fronts := mo.fastNonDominatedSort(population)
+	fronts := mo.FastNonDominatedSort(population)
 	paretoFront := make([]Individual, 0)
 	if len(fronts) > 0 {
 		paretoFront = fronts[0]
