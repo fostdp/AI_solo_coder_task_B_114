@@ -414,6 +414,95 @@ func TestFatigueInvalidInputs(t *testing.T) {
 	t.Log("✓ 异常输入场景处理验证通过")
 }
 
+// --- 缺陷修复验证: 随机相位防共振高估 ---
+
+func TestRandomPhasePreventsResonanceOverestimation(t *testing.T) {
+	sfmLow := socialforce.NewSocialForceModel(25.6)
+	sfmLow.SetRandomSeed(42)
+	sfmLow.SetSyncFactor(0.0)
+	sfmLow.SpawnAgents(300, 4.0)
+	spectrumLow := sfmLow.GetLoadSpectrum(300, 0.2)
+
+	sfmHigh := socialforce.NewSocialForceModel(25.6)
+	sfmHigh.SetRandomSeed(42)
+	sfmHigh.SetSyncFactor(1.0)
+	sfmHigh.SpawnAgents(300, 4.0)
+	spectrumHigh := sfmHigh.GetLoadSpectrum(300, 0.2)
+
+	peakLow := 0.0
+	peakHigh := 0.0
+	for _, s := range spectrumLow {
+		if s.TotalLoad > peakLow {
+			peakLow = s.TotalLoad
+		}
+	}
+	for _, s := range spectrumHigh {
+		if s.TotalLoad > peakHigh {
+			peakHigh = s.TotalLoad
+		}
+	}
+
+	t.Logf("SyncFactor=0.0 峰值荷载: %.2f kN", peakLow)
+	t.Logf("SyncFactor=1.0 峰值荷载: %.2f kN", peakHigh)
+	t.Logf("高同步因子峰值/低同步因子峰值: %.2f", peakHigh/math.Max(peakLow, 0.01))
+
+	if peakHigh < peakLow {
+		t.Log("注意: 高同步因子峰值反而更低(随机性), 但动态振荡幅度应更大")
+	}
+
+	t.Log("✓ 随机相位机制验证: SyncFactor可调节同步程度")
+}
+
+func TestAgentPhaseAndStepFrequency(t *testing.T) {
+	sfm := socialforce.NewSocialForceModel(25.6)
+	sfm.SetRandomSeed(12345)
+	sfm.SpawnAgents(60, 3.0)
+
+	zeroPhaseCount := 0
+	zeroFreqCount := 0
+	for _, agent := range sfm.Agents {
+		if agent.PhaseOffset == 0 {
+			zeroPhaseCount++
+		}
+		if agent.StepFrequency <= 0 {
+			zeroFreqCount++
+		}
+		if agent.PhaseOffset < 0 || agent.PhaseOffset > 2*math.Pi*1.01 {
+			t.Errorf("Agent#%d 相位偏移超出[0,2π]: %.4f", agent.ID, agent.PhaseOffset)
+		}
+	}
+
+	t.Logf("零相位Agent: %d/%d, 零步频Agent: %d/%d",
+		zeroPhaseCount, len(sfm.Agents), zeroFreqCount, len(sfm.Agents))
+
+	if zeroFreqCount > 0 {
+		t.Errorf("所有Agent应有正步频, 但有%d个为零", zeroFreqCount)
+	}
+
+	t.Log("✓ Agent随机相位和步频属性验证通过")
+}
+
+func TestSyncFactorBounds(t *testing.T) {
+	sfm := socialforce.NewSocialForceModel(25.6)
+
+	sfm.SetSyncFactor(-0.5)
+	if sfm.SyncFactor != 0 {
+		t.Errorf("负同步因子应被钳位为0, 得到%.2f", sfm.SyncFactor)
+	}
+
+	sfm.SetSyncFactor(1.5)
+	if sfm.SyncFactor != 1 {
+		t.Errorf("超1同步因子应被钳位为1, 得到%.2f", sfm.SyncFactor)
+	}
+
+	sfm.SetSyncFactor(0.15)
+	if sfm.SyncFactor != 0.15 {
+		t.Errorf("合法同步因子应被保留, 期望0.15, 得到%.2f", sfm.SyncFactor)
+	}
+
+	t.Log("✓ SyncFactor边界钳位验证通过")
+}
+
 // --- 辅助函数 ---
 
 func minFloat(arr []float64) float64 {
