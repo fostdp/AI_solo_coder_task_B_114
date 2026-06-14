@@ -18,8 +18,6 @@ func GenerateArchBridge(bridgeID int, spanLength, archRise, deckWidth float64) *
 	memberTypes := make(map[int]string)
 
 	numArchSegments := 10
-	numDeckNodes := numArchSegments + 1
-	numVerticalMembers := numArchSegments + 1
 
 	archRadius := (spanLength*spanLength/4 + archRise*archRise) / (2 * archRise)
 	archCenterY := archRise - archRadius
