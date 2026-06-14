@@ -9,48 +9,52 @@ import (
 type AgentType string
 
 const (
-	AgentPedestrian  AgentType = "pedestrian"
-	AgentOxCart      AgentType = "ox_cart"
-	AgentHorseCart   AgentType = "horse_cart"
-	AgentSedanChair  AgentType = "sedan_chair"
-	AgentMilitary    AgentType = "military_convoy"
-	AgentPeddler     AgentType = "peddler"
+	AgentPedestrian AgentType = "pedestrian"
+	AgentOxCart     AgentType = "ox_cart"
+	AgentHorseCart  AgentType = "horse_cart"
+	AgentSedanChair AgentType = "sedan_chair"
+	AgentMilitary   AgentType = "military_convoy"
+	AgentPeddler    AgentType = "peddler"
 )
 
 type Agent struct {
-	ID          int
-	Type        AgentType
-	X           float64
-	Velocity    float64
-	TargetX     float64
-	Weight      float64
-	DesiredVel  float64
-	Radius      float64
-	ArrivalTime float64
-	Active      bool
+	ID            int
+	Type          AgentType
+	X             float64
+	Velocity      float64
+	TargetX       float64
+	Weight        float64
+	DesiredVel    float64
+	Radius        float64
+	ArrivalTime   float64
+	Active        bool
+	PhaseOffset   float64
+	StepFrequency float64
 }
 
 type SocialForceModel struct {
-	Agents      []*Agent
-	SpanLength  float64
-	StartTime   time.Time
-	CurrentTime float64
-	RandomSeed  int64
-	TimeStep    float64
+	Agents         []*Agent
+	SpanLength     float64
+	StartTime      time.Time
+	CurrentTime    float64
+	RandomSeed     int64
+	TimeStep       float64
+	SyncFactor     float64
 }
 
 var agentParameters = map[AgentType]struct {
-	Weight      float64
-	DesiredVel  float64
-	Radius      float64
-	Probability float64
+	Weight        float64
+	DesiredVel    float64
+	Radius        float64
+	Probability   float64
+	StepFrequency float64
 }{
-	AgentPedestrian: {Weight: 0.7, DesiredVel: 1.2, Radius: 0.3, Probability: 0.45},
-	AgentOxCart:     {Weight: 30.0, DesiredVel: 0.8, Radius: 1.2, Probability: 0.20},
-	AgentHorseCart:  {Weight: 50.0, DesiredVel: 1.5, Radius: 1.5, Probability: 0.15},
-	AgentSedanChair: {Weight: 8.0, DesiredVel: 1.0, Radius: 0.8, Probability: 0.08},
-	AgentMilitary:   {Weight: 80.0, DesiredVel: 1.8, Radius: 2.0, Probability: 0.05},
-	AgentPeddler:    {Weight: 3.0, DesiredVel: 0.6, Radius: 0.5, Probability: 0.07},
+	AgentPedestrian: {Weight: 0.7, DesiredVel: 1.2, Radius: 0.3, Probability: 0.45, StepFrequency: 2.0},
+	AgentOxCart:     {Weight: 30.0, DesiredVel: 0.8, Radius: 1.2, Probability: 0.20, StepFrequency: 1.0},
+	AgentHorseCart:  {Weight: 50.0, DesiredVel: 1.5, Radius: 1.5, Probability: 0.15, StepFrequency: 1.5},
+	AgentSedanChair: {Weight: 8.0, DesiredVel: 1.0, Radius: 0.8, Probability: 0.08, StepFrequency: 1.8},
+	AgentMilitary:   {Weight: 80.0, DesiredVel: 1.8, Radius: 2.0, Probability: 0.05, StepFrequency: 1.2},
+	AgentPeddler:    {Weight: 3.0, DesiredVel: 0.6, Radius: 0.5, Probability: 0.07, StepFrequency: 1.6},
 }
 
 func NewSocialForceModel(spanLength float64) *SocialForceModel {
@@ -58,12 +62,23 @@ func NewSocialForceModel(spanLength float64) *SocialForceModel {
 		SpanLength: spanLength,
 		StartTime:  time.Now(),
 		TimeStep:   0.1,
+		SyncFactor: 0.1,
 	}
 }
 
 func (sfm *SocialForceModel) SetRandomSeed(seed int64) {
 	sfm.RandomSeed = seed
 	rand.Seed(seed)
+}
+
+func (sfm *SocialForceModel) SetSyncFactor(factor float64) {
+	if factor < 0 {
+		factor = 0
+	}
+	if factor > 1 {
+		factor = 1
+	}
+	sfm.SyncFactor = factor
 }
 
 func (sfm *SocialForceModel) SpawnAgents(durationSeconds float64, crowdDensity float64) {
@@ -86,17 +101,22 @@ func (sfm *SocialForceModel) SpawnAgents(durationSeconds float64, crowdDensity f
 			targetX = 0.0
 		}
 
+		phaseOffset := rand.Float64() * 2.0 * math.Pi
+		stepFreq := params.StepFrequency * (0.85 + rand.Float64()*0.3)
+
 		agent := &Agent{
-			ID:          idCounter,
-			Type:        agentType,
-			X:           startX + (rand.Float64() - 0.5) * 2.0,
-			Velocity:    params.DesiredVel * (0.8 + rand.Float64() * 0.4),
-			TargetX:     targetX,
-			Weight:      params.Weight * (0.9 + rand.Float64() * 0.2),
-			DesiredVel:  params.DesiredVel,
-			Radius:      params.Radius,
-			ArrivalTime: sfm.CurrentTime + rand.Float64() * durationSeconds,
-			Active:      true,
+			ID:            idCounter,
+			Type:          agentType,
+			X:             startX + (rand.Float64()-0.5)*2.0,
+			Velocity:      params.DesiredVel * (0.8 + rand.Float64()*0.4),
+			TargetX:       targetX,
+			Weight:        params.Weight * (0.9 + rand.Float64()*0.2),
+			DesiredVel:    params.DesiredVel,
+			Radius:        params.Radius,
+			ArrivalTime:   sfm.CurrentTime + rand.Float64()*durationSeconds,
+			Active:        true,
+			PhaseOffset:   phaseOffset,
+			StepFrequency: stepFreq,
 		}
 		sfm.Agents = append(sfm.Agents, agent)
 		idCounter++
@@ -161,6 +181,19 @@ func (sfm *SocialForceModel) Step() {
 	sfm.CurrentTime += sfm.TimeStep
 }
 
+func (sfm *SocialForceModel) calculateDynamicLoadFactor(agent *Agent, timeSeconds float64) float64 {
+	if agent.StepFrequency <= 0 {
+		return 1.0
+	}
+
+	dynamicAmplitude := sfm.SyncFactor * 0.4
+
+	oscillation := dynamicAmplitude * math.Sin(
+		2.0*math.Pi*agent.StepFrequency*timeSeconds+agent.PhaseOffset)
+
+	return 1.0 + oscillation
+}
+
 func (sfm *SocialForceModel) GetLoadSpectrum(numTimeSteps int, timeStep float64) []LoadTimeStep {
 	spectrum := make([]LoadTimeStep, 0, numTimeSteps)
 
@@ -171,8 +204,14 @@ func (sfm *SocialForceModel) GetLoadSpectrum(numTimeSteps int, timeStep float64)
 		activeCount := 0
 		positionalLoads := make(map[int]float64)
 
+		timeSeconds := float64(t) * timeStep
+
 		for _, agent := range sfm.Agents {
 			if agent.Active && sfm.CurrentTime >= agent.ArrivalTime {
+				dynamicFactor := sfm.calculateDynamicLoadFactor(agent, timeSeconds)
+
+				effectiveWeight := agent.Weight * dynamicFactor
+
 				positionIdx := int(agent.X / sfm.SpanLength * 10)
 				if positionIdx < 0 {
 					positionIdx = 0
@@ -180,15 +219,15 @@ func (sfm *SocialForceModel) GetLoadSpectrum(numTimeSteps int, timeStep float64)
 				if positionIdx > 9 {
 					positionIdx = 9
 				}
-				positionalLoads[positionIdx] += agent.Weight
-				load += agent.Weight
+				positionalLoads[positionIdx] += effectiveWeight
+				load += effectiveWeight
 				activeCount++
 			}
 		}
 
 		spectrum = append(spectrum, LoadTimeStep{
 			TimeStep:         t,
-			TimeSeconds:      float64(t) * timeStep,
+			TimeSeconds:      timeSeconds,
 			TotalLoad:        load,
 			ActiveAgentCount: activeCount,
 			LoadDistribution: positionalLoads,
