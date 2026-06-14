@@ -503,6 +503,114 @@ func TestOptimizationDeterminism(t *testing.T) {
 	t.Log("✓ 算法确定性测试完成 (同种子结果特性稳定)")
 }
 
+// --- 缺陷修复验证: 界面剥离建模 ---
+
+func TestInterfaceBondFactor(t *testing.T) {
+	methods := reinforcement.GetReinforcementMethods()
+	for _, m := range methods {
+		bondFactor, ok := m["bond_factor"]
+		if !ok {
+			t.Errorf("方法 %v 缺少 bond_factor 属性", m["id"])
+			continue
+		}
+		bf, ok := bondFactor.(float64)
+		if !ok {
+			t.Errorf("方法 %v bond_factor 类型不是float64", m["id"])
+			continue
+		}
+		if bf <= 0 || bf > 1 {
+			t.Errorf("方法 %v bond_factor 超出(0,1]: %.2f", m["id"], bf)
+		}
+		t.Logf("  %v: bond_factor=%.2f", m["id"], bf)
+	}
+	t.Log("✓ 界面粘结系数范围验证通过")
+}
+
+func TestDebondingRiskCalculation(t *testing.T) {
+	mo := reinforcement.NewMultiObjectiveOptimizer()
+	mo.SetSeed(42)
+
+	results := mo.Optimize(1.0, 1.0, 58)
+
+	for i, r := range results {
+		if r.剥离风险 < 0 || r.剥离风险 > 0.8 {
+			t.Errorf("方案#%d 剥离风险超出[0,0.8]: %.4f", i+1, r.剥离风险)
+		}
+		if r.界面粘结系数 <= 0 || r.界面粘结系数 > 1 {
+			t.Errorf("方案#%d 界面粘结系数超出(0,1]: %.4f", i+1, r.界面粘结系数)
+		}
+		if r.有效刚度提升率 < 0 {
+			t.Errorf("方案#%d 有效刚度提升率不能为负: %.4f", i+1, r.有效刚度提升率)
+		}
+		if r.有效强度提升率 < 0 {
+			t.Errorf("方案#%d 有效强度提升率不能为负: %.4f", i+1, r.有效强度提升率)
+		}
+		t.Logf("  方案#%d %v: 粘结=%.2f, 剥离风险=%.3f, 刚度(名义=%.3f,有效=%.3f), 强度(名义=%.3f,有效=%.3f)",
+			r.方案ID, r.Params.Method,
+			r.界面粘结系数, r.剥离风险,
+			r.刚度提升率, r.有效刚度提升率,
+			r.强度提升率, r.有效强度提升率)
+	}
+	t.Log("✓ 界面剥离风险与有效增益验证通过")
+}
+
+func TestEffectiveGainLessThanNominal(t *testing.T) {
+	mo := reinforcement.NewMultiObjectiveOptimizer()
+	mo.SetSeed(777)
+	mo.PopulationSize = 30
+	mo.MaxGenerations = 5
+
+	results := mo.Optimize(1.0, 1.0, 58)
+
+	violations := 0
+	for _, r := range results {
+		if r.有效刚度提升率 > r.刚度提升率*1.01 {
+			violations++
+			t.Errorf("有效刚度提升率(%.4f)不应大于名义值(%.4f)",
+				r.有效刚度提升率, r.刚度提升率)
+		}
+		if r.有效强度提升率 > r.强度提升率*1.01 {
+			violations++
+			t.Errorf("有效强度提升率(%.4f)不应大于名义值(%.4f)",
+				r.有效强度提升率, r.强度提升率)
+		}
+	}
+
+	if violations > 0 {
+		t.Errorf("有效增益超出名义值: %d次违规", violations)
+	}
+	t.Log("✓ 有效增益≤名义增益验证通过 (界面剥离折减正确)")
+}
+
+func TestSteelPlateHigherDebondingRisk(t *testing.T) {
+	methods := reinforcement.GetReinforcementMethods()
+
+	steelBond := 0.0
+	woodBond := 0.0
+	for _, m := range methods {
+		bf, _ := m["bond_factor"].(float64)
+		if m["id"] == string(reinforcement.MethodSteelPlate) {
+			steelBond = bf
+		}
+		if m["id"] == string(reinforcement.MethodWoodenSplice) {
+			woodBond = bf
+		}
+	}
+
+	t.Logf("钢板粘结系数: %.2f, 木榫粘结系数: %.2f", steelBond, woodBond)
+
+	if steelBond >= woodBond {
+		t.Errorf("钢板粘结系数(%.2f)应低于木榫(%.2f)", steelBond, woodBond)
+	}
+
+	steelDebonding := 1.0 - steelBond
+	woodDebonding := 1.0 - woodBond
+	if steelDebonding <= woodDebonding {
+		t.Errorf("钢板剥离风险(%.4f)应高于木榫(%.4f)", steelDebonding, woodDebonding)
+	}
+	t.Log("✓ 钢板>木榫剥离风险排序验证通过")
+}
+
 // --- 辅助函数 ---
 
 func resultToFitness(r reinforcement.ReinforcementResult) []float64 {
