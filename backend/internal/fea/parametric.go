@@ -387,7 +387,7 @@ func CalculateParametricAnalysis(bridgeID int, span, rise, width float64, loadVa
 		loads[nodeID] = -loadValue / float64(numDeckNodes)
 	}
 
-	model.Structure.ApplyLoads(loads)
+	model.Structure.ApplyLoadMap(loads)
 	model.Structure.Solve()
 
 	forces := model.Structure.CalculateMemberForces()
