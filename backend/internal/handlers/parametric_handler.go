@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"ancient-bridge-system/internal/database"
-	"ancient-bridge-system/internal/fea"
+	publicengagement "ancient-bridge-system/internal/public_engagement"
 
 	"github.com/gin-gonic/gin"
 )
@@ -28,8 +28,8 @@ type ParametricResponse struct {
 	AnalysisID int                        `json:"analysis_id"`
 	Valid      bool                       `json:"valid"`
 	Message    string                     `json:"message"`
-	Result     *fea.ParametricAnalysisResult `json:"result,omitempty"`
-	Options    []fea.GeometryOption       `json:"options,omitempty"`
+	Result     *publicengagement.ParametricAnalysisResult `json:"result,omitempty"`
+	Options    []publicengagement.GeometryOption       `json:"options,omitempty"`
 }
 
 func (h *ParametricHandler) GetGeometryOptions(c *gin.Context) {
@@ -48,7 +48,7 @@ func (h *ParametricHandler) GetGeometryOptions(c *gin.Context) {
 	err = database.DB.Get(&bridge,
 		"SELECT span_length, arch_rise, deck_width FROM bridges WHERE bridge_id = $1", bridgeID)
 	if err != nil {
-		pb := fea.NewParametricBridge(bridgeID, 25.6, 5.8, 6.5)
+		pb := publicengagement.NewParametricBridge(bridgeID, 25.6, 5.8, 6.5)
 		c.JSON(http.StatusOK, gin.H{
 			"code":    0,
 			"message": "success",
@@ -57,7 +57,7 @@ func (h *ParametricHandler) GetGeometryOptions(c *gin.Context) {
 		return
 	}
 
-	pb := fea.NewParametricBridge(bridgeID, bridge.SpanLength, bridge.ArchRise, bridge.DeckWidth)
+	pb := publicengagement.NewParametricBridge(bridgeID, bridge.SpanLength, bridge.ArchRise, bridge.DeckWidth)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -73,7 +73,7 @@ func (h *ParametricHandler) Analyze(c *gin.Context) {
 		return
 	}
 
-	pb := fea.NewParametricBridge(req.BridgeID, 25.6, 5.8, 6.5)
+	pb := publicengagement.NewParametricBridge(req.BridgeID, 25.6, 5.8, 6.5)
 
 	valid, message := pb.ValidateParams(req.SpanLength, req.ArchRise, req.DeckWidth)
 
@@ -81,9 +81,9 @@ func (h *ParametricHandler) Analyze(c *gin.Context) {
 		req.LoadValue = 50.0
 	}
 
-	var result *fea.ParametricAnalysisResult
+	var result *publicengagement.ParametricAnalysisResult
 	if valid {
-		analysisResult := fea.CalculateParametricAnalysis(
+		analysisResult := publicengagement.CalculateParametricAnalysis(
 			req.BridgeID,
 			req.SpanLength,
 			req.ArchRise,
@@ -134,13 +134,13 @@ func (h *ParametricHandler) BatchAnalyze(c *gin.Context) {
 		req.LoadValue = 50.0
 	}
 
-	results := make([]fea.ParametricAnalysisResult, 0, len(req.Points))
-	pb := fea.NewParametricBridge(req.BridgeID, 25.6, 5.8, 6.5)
+	results := make([]publicengagement.ParametricAnalysisResult, 0, len(req.Points))
+	pb := publicengagement.NewParametricBridge(req.BridgeID, 25.6, 5.8, 6.5)
 
 	for _, point := range req.Points {
 		valid, _ := pb.ValidateParams(point.SpanLength, point.ArchRise, point.DeckWidth)
 		if valid {
-			result := fea.CalculateParametricAnalysis(
+			result := publicengagement.CalculateParametricAnalysis(
 				req.BridgeID,
 				point.SpanLength,
 				point.ArchRise,
