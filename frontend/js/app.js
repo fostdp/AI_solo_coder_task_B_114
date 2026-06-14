@@ -2,10 +2,10 @@ let bridgeView = null;
 let currentView = 'model';
 let currentBridgeId = 1;
 
-let dynamicLoadAnalysis = null;
-let historicalComparison = null;
-let reinforcementOptimization = null;
-let parametricDesign = null;
+let movingLoadSimulator = null;
+let bridgeComparator = null;
+let retrofitOptimizer = null;
+let publicEngagement = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     initApplication();
@@ -133,30 +133,30 @@ function switchView(viewName) {
     }
 
     if (viewName === 'dynamic') {
-        if (!dynamicLoadAnalysis) {
-            dynamicLoadAnalysis = new DynamicLoadAnalysis('dynamicPanel', bridgeView, bridgeAnalysis);
+        if (!movingLoadSimulator) {
+            movingLoadSimulator = new MovingLoadSimulator('dynamicPanel', bridgeView, bridgeAnalysis);
         }
-        setTimeout(() => dynamicLoadAnalysis.init(), 50);
+        setTimeout(() => movingLoadSimulator.init(), 50);
     }
     if (viewName === 'comparison') {
-        if (!historicalComparison) {
-            historicalComparison = new HistoricalComparison('comparisonPanel');
+        if (!bridgeComparator) {
+            bridgeComparator = new BridgeComparator('comparisonPanel');
         }
-        setTimeout(() => historicalComparison.init(), 50);
+        setTimeout(() => bridgeComparator.init(), 50);
     }
     if (viewName === 'reinforcement') {
-        if (!reinforcementOptimization) {
-            reinforcementOptimization = new ReinforcementOptimization('reinforcementPanel');
-            window.reinforcementOptimization = reinforcementOptimization;
+        if (!retrofitOptimizer) {
+            retrofitOptimizer = new RetrofitOptimizer('reinforcementPanel');
+            window.retrofitOptimizer = retrofitOptimizer;
         }
-        setTimeout(() => reinforcementOptimization.init(), 50);
+        setTimeout(() => retrofitOptimizer.init(), 50);
     }
     if (viewName === 'parametric') {
-        if (!parametricDesign) {
-            parametricDesign = new ParametricDesign('parametricPanel', bridgeView);
-            window.parametricDesign = parametricDesign;
+        if (!publicEngagement) {
+            publicEngagement = new PublicEngagement('parametricPanel', bridgeView);
+            window.publicEngagement = publicEngagement;
         }
-        setTimeout(() => parametricDesign.init(), 50);
+        setTimeout(() => publicEngagement.init(), 50);
     }
 }
 
