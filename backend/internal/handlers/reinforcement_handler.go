@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"ancient-bridge-system/internal/database"
-	"ancient-bridge-system/internal/reinforcement"
+	retrofitoptimizer "ancient-bridge-system/internal/retrofit_optimizer"
 
 	"github.com/gin-gonic/gin"
 )
@@ -33,8 +33,8 @@ type ReinforceRequest struct {
 type ReinforceResponse struct {
 	AnalysisID      int                               `json:"analysis_id"`
 	BridgeID        int                               `json:"bridge_id"`
-	OptimalSolutions []reinforcement.ReinforcementResult `json:"optimal_solutions"`
-	Methods         []map[string]interface{}          `json:"reinforcement_methods"`
+	OptimalSolutions []retrofitoptimizer.ReinforcementResult `json:"optimal_solutions"`
+	Methods         []map[string]interface{}          `json:"retrofitoptimizer_methods"`
 	Recommendations []string                          `json:"recommendations"`
 }
 
@@ -59,7 +59,7 @@ func (h *ReinforcementHandler) RunOptimization(c *gin.Context) {
 		req.MaxGenerations = 40
 	}
 
-	optimizer := reinforcement.NewMultiObjectiveOptimizer()
+	optimizer := retrofitoptimizer.NewMultiObjectiveOptimizer()
 	optimizer.PopulationSize = req.PopulationSize
 	optimizer.MaxGenerations = req.MaxGenerations
 
@@ -80,7 +80,7 @@ func (h *ReinforcementHandler) RunOptimization(c *gin.Context) {
 
 	recommendations := generateReinforcementRecommendations(results)
 
-	methods := reinforcement.GetReinforcementMethods()
+	methods := retrofitoptimizer.GetReinforcementMethods()
 
 	response := ReinforceResponse{
 		AnalysisID:       int(generateAnalysisID()),
@@ -98,7 +98,7 @@ func (h *ReinforcementHandler) RunOptimization(c *gin.Context) {
 }
 
 func (h *ReinforcementHandler) GetMethods(c *gin.Context) {
-	methods := reinforcement.GetReinforcementMethods()
+	methods := retrofitoptimizer.GetReinforcementMethods()
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
@@ -106,7 +106,7 @@ func (h *ReinforcementHandler) GetMethods(c *gin.Context) {
 	})
 }
 
-func generateReinforcementRecommendations(results []reinforcement.ReinforcementResult) []string {
+func generateReinforcementRecommendations(results []retrofitoptimizer.ReinforcementResult) []string {
 	recommendations := make([]string, 0)
 
 	if len(results) == 0 {
@@ -117,31 +117,31 @@ func generateReinforcementRecommendations(results []reinforcement.ReinforcementR
 	best := results[0]
 
 	recommendations = append(recommendations,
-		"最优综合方案：方案"+string(rune('0'+best.方案ID))+"，综合评分"+formatScore(best.综合评分))
+		"optimal plan: plan#"+fmt.Sprintf("%d", best.PlanID)+", score="+formatScore(best.OverallScore))
 
-	if best.刚度提升率 > 0.4 {
-		recommendations = append(recommendations, "刚度提升显著，适合对变形控制要求高的场景")
-	} else if best.刚度提升率 > 0.2 {
-		recommendations = append(recommendations, "刚度提升适中，可满足一般加固需求")
+	if best.StiffnessGainRate > 0.4 {
+		recommendations = append(recommendations, "stiffness gain significant, suitable for deformation control scenarios")
+	} else if best.StiffnessGainRate > 0.2 {
+		recommendations = append(recommendations, "moderate stiffness gain, meets general reinforcement needs")
 	}
 
-	if best.历史风貌影响度 < 0.3 {
-		recommendations = append(recommendations, "历史风貌影响较小，符合文物保护原则")
-	} else if best.历史风貌影响度 > 0.5 {
-		recommendations = append(recommendations, "对历史风貌有一定影响，施工前需文物部门评估")
+	if best.HeritageImpactRate < 0.3 {
+		recommendations = append(recommendations, "low heritage impact, conforms to cultural preservation principles")
+	} else if best.HeritageImpactRate > 0.5 {
+		recommendations = append(recommendations, "significant heritage impact, heritage authority assessment needed before construction")
 	}
 
-	if best.成本IncreaseFactor > 2.5 {
-		recommendations = append(recommendations, "成本较高，建议进行技术经济比较")
+	if best.CostIncreaseFactor > 2.5 {
+		recommendations = append(recommendations, "high cost, technical-economic comparison recommended")
 	}
 
-	if best.施工复杂度 > 0.7 {
-		recommendations = append(recommendations, "施工复杂，建议选择有经验的专业队伍")
+	if best.ConstructionComplexity > 0.7 {
+		recommendations = append(recommendations, "complex construction, experienced professional team recommended")
 	}
 
 	if len(results) > 1 {
 		recommendations = append(recommendations,
-			"共获得"+string(rune('0'+len(results)))+"个Pareto最优方案，可根据具体需求权衡选择")
+			fmt.Sprintf("%d Pareto optimal plans obtained, choose based on specific requirements", len(results)))
 	}
 
 	return recommendations
