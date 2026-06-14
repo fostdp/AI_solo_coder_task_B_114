@@ -73,6 +73,7 @@ type RandomForest struct {
 	FeatureNames  []string
 	Importance    map[string]float64
 	Labels        []string
+	OOBError      float64
 	trainMutex    sync.Mutex
 }
 
@@ -135,6 +136,14 @@ func (rf *RandomForest) Train(samples []DataSample) {
 	}
 
 	rf.calculateFeatureImportance(samples)
+
+	totalOOB := 0.0
+	for _, tree := range rf.Trees {
+		totalOOB += tree.OOBError
+	}
+	if len(rf.Trees) > 0 {
+		rf.OOBError = totalOOB / float64(len(rf.Trees))
+	}
 }
 
 func (rf *RandomForest) buildTree(samples []DataSample, depth int, numFeatures int) *DecisionTreeNode {
@@ -271,7 +280,10 @@ func (rf *RandomForest) calculateFeatureImportance(samples []DataSample) {
 	importance := make([]float64, len(rf.FeatureNames))
 
 	for _, tree := range rf.Trees {
-		importance += treePermutationImportance(tree, samples, importance)
+		treeImp := treePermutationImportance(tree, samples, importance)
+		for i, v := range treeImp {
+			importance[i] += v
+		}
 	}
 
 	for i, fi := range importance {
@@ -356,7 +368,7 @@ func bootstrapSample(samples []DataSample, n int) []DataSample {
 
 func getOOBIndices(samples []DataSample, bootstrap []DataSample) []int {
 	sampleMap := make(map[int]bool)
-	for i := range bootstrap {
+	for range bootstrap {
 		idx := rand.Intn(len(samples))
 		sampleMap[idx] = true
 	}
@@ -539,7 +551,7 @@ func addNoise(v float64, sigma float64) float64 {
 	return v + (rand.Float64()-0.5)*2*sigma
 }
 
-func buildSpeciesTrainingData() []DataSample {
+func BuildSpeciesTrainingData() []DataSample {
 	samples := make([]DataSample, 0)
 	speciesList := []struct {
 		name   string
@@ -549,19 +561,19 @@ func buildSpeciesTrainingData() []DataSample {
 	}{
 		{"杉木", GenerateTypicalWoodFeatures("杉木"), 80, 0.08},
 		{"松木", GenerateTypicalWoodFeatures("松木"), 80, 0.10},
-		{"楠木", {
+		{"楠木", &WoodFeature{
 			GrainDensity: 4.0, GrainAngle: 8.0, LatewoodRatio: 0.38,
 			KnotsCount: 1.5, AverageKnotSize: 0.6, Density: 0.61,
 			Hardness: 4.2, ColorR: 175, ColorG: 130, ColorB: 80,
 		}, 60, 0.08},
-		{"榆木", {
+		{"榆木", &WoodFeature{
 			GrainDensity: 4.5, GrainAngle: 12.0, LatewoodRatio: 0.45,
 			KnotsCount: 3.0, AverageKnotSize: 1.0, Density: 0.68,
 			Hardness: 5.2, ColorR: 190, ColorG: 145, ColorB: 95,
 		}, 60, 0.10},
 		{"黄花梨", GenerateTypicalWoodFeatures("黄花梨"), 40, 0.06},
 		{"紫檀", GenerateTypicalWoodFeatures("紫檀"), 30, 0.05},
-		{"柞木", {
+		{"柞木", &WoodFeature{
 			GrainDensity: 5.2, GrainAngle: 14.0, LatewoodRatio: 0.48,
 			KnotsCount: 2.5, AverageKnotSize: 0.9, Density: 0.76,
 			Hardness: 6.0, ColorR: 165, ColorG: 115, ColorB: 65,
@@ -588,7 +600,7 @@ func buildSpeciesTrainingData() []DataSample {
 	return samples
 }
 
-func buildGradeTrainingData() []DataSample {
+func BuildGradeTrainingData() []DataSample {
 	samples := make([]DataSample, 0)
 	gradeDefs := []struct {
 		grade  string
@@ -616,9 +628,9 @@ func buildGradeTrainingData() []DataSample {
 			wf.Hardness = gd.hardness[0] + rand.Float64()*(gd.hardness[1]-gd.hardness[0])
 			wf.GrainDensity = addNoise(wf.Density*7, 0.5)
 			wf.GrainAngle = addNoise(10, 4)
-			wf.ColorR = addNoise(170, 15)
-			wf.ColorG = addNoise(140, 15)
-			wf.ColorB = addNoise(90, 15)
+			wf.ColorR = int(addNoise(170, 15))
+			wf.ColorG = int(addNoise(140, 15))
+			wf.ColorB = int(addNoise(90, 15))
 			samples = append(samples, DataSample{
 				Features: woodFeaturesToVector(wf),
 				Label:    gd.grade,
@@ -637,11 +649,11 @@ var (
 
 func initGlobalForests() {
 	initRFOnce.Do(func() {
-		speciesData := buildSpeciesTrainingData()
+		speciesData := BuildSpeciesTrainingData()
 		globalSpeciesRF = NewRandomForest(80, 4, speciesFeatureNames)
 		globalSpeciesRF.Train(speciesData)
 
-		gradeData := buildGradeTrainingData()
+		gradeData := BuildGradeTrainingData()
 		globalGradeRF = NewRandomForest(80, 4, gradeFeatureNames)
 		globalGradeRF.Train(gradeData)
 
