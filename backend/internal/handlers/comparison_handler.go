@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	historicalcomparison "ancient-bridge-system/internal/historical_comparison"
+	bridgecomparator "ancient-bridge-system/internal/bridge_comparator"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,15 +22,15 @@ type CompareRequest struct {
 
 type CompareResponse struct {
 	AnalysisID       int                                         `json:"analysis_id"`
-	BridgeA          historicalcomparison.HistoricalBridge       `json:"bridge_a"`
-	BridgeB          historicalcomparison.HistoricalBridge       `json:"bridge_b"`
-	MetricsA         historicalcomparison.EfficiencyMetrics      `json:"metrics_a"`
-	MetricsB         historicalcomparison.EfficiencyMetrics      `json:"metrics_b"`
-	RadarData        []historicalcomparison.RadarPoint           `json:"radar_data"`
+	BridgeA          bridgecomparator.HistoricalBridge       `json:"bridge_a"`
+	BridgeB          bridgecomparator.HistoricalBridge       `json:"bridge_b"`
+	MetricsA         bridgecomparator.EfficiencyMetrics      `json:"metrics_a"`
+	MetricsB         bridgecomparator.EfficiencyMetrics      `json:"metrics_b"`
+	RadarData        []bridgecomparator.RadarPoint           `json:"radar_data"`
 	AdvantagesA      []string                                    `json:"advantages_a"`
 	AdvantagesB      []string                                    `json:"advantages_b"`
 	HistoricalNotes  []string                                    `json:"historical_notes"`
-	TechEvolution    []historicalcomparison.TechEvolutionPoint   `json:"tech_evolution"`
+	TechEvolution    []bridgecomparator.TechEvolutionPoint   `json:"tech_evolution"`
 	NormalizedScores map[string]map[string]float64               `json:"normalized_scores"`
 }
 
@@ -41,10 +41,10 @@ func (h *ComparisonHandler) CompareBridges(c *gin.Context) {
 		return
 	}
 
-	hc := historicalcomparison.NewHistoricalComparison()
+	hc := bridgecomparator.NewHistoricalComparison()
 	allBridges := hc.GetAllBridges()
 
-	var bridgeA, bridgeB historicalcomparison.HistoricalBridge
+	var bridgeA, bridgeB bridgecomparator.HistoricalBridge
 	foundA, foundB := false, false
 
 	for _, b := range allBridges {
@@ -97,11 +97,11 @@ func (h *ComparisonHandler) CompareBridges(c *gin.Context) {
 func (h *ComparisonHandler) GetHistoricalBridges(c *gin.Context) {
 	dynastyParam := c.Query("dynasty")
 
-	hc := historicalcomparison.NewHistoricalComparison()
-	var bridges []historicalcomparison.HistoricalBridge
+	hc := bridgecomparator.NewHistoricalComparison()
+	var bridges []bridgecomparator.HistoricalBridge
 
 	if dynastyParam != "" {
-		bridges = hc.GetBridgesByDynasty(historicalcomparison.Dynasty(dynastyParam))
+		bridges = hc.GetBridgesByDynasty(bridgecomparator.Dynasty(dynastyParam))
 	} else {
 		bridges = hc.GetAllBridges()
 	}
@@ -130,7 +130,7 @@ func (h *ComparisonHandler) GetDynasties(c *gin.Context) {
 }
 
 func (h *ComparisonHandler) GetTechEvolution(c *gin.Context) {
-	hc := historicalcomparison.NewHistoricalComparison()
+	hc := bridgecomparator.NewHistoricalComparison()
 	allBridges := hc.GetAllBridges()
 	if len(allBridges) < 2 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Not enough bridges"})
