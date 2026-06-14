@@ -4,9 +4,7 @@ import (
 	"net/http"
 
 	"ancient-bridge-system/internal/database"
-	"ancient-bridge-system/internal/fatigue"
-	"ancient-bridge-system/internal/fea"
-	socialforce "ancient-bridge-system/internal/social_force"
+	movingloadsimulator "ancient-bridge-system/internal/moving_load_simulator"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,24 +16,24 @@ func NewDynamicLoadHandler() *DynamicLoadHandler {
 }
 
 type SocialForceRequest struct {
-	BridgeID      int     `json:"bridge_id" binding:"required"`
-	Duration      float64 `json:"duration" binding:"min=10,max=600"`
-	CrowdDensity  float64 `json:"crowd_density" binding:"min=0.1,max=5.0"`
-	TimeStep      float64 `json:"time_step" binding:"min=0.05,max=1.0"`
-	RandomSeed    int64   `json:"random_seed"`
+	BridgeID        int     `json:"bridge_id" binding:"required"`
+	Duration        float64 `json:"duration" binding:"min=10,max=600"`
+	CrowdDensity    float64 `json:"crowd_density" binding:"min=0.1,max=5.0"`
+	TimeStep        float64 `json:"time_step" binding:"min=0.05,max=1.0"`
+	RandomSeed      int64   `json:"random_seed"`
 	LoadCyclesPerDay float64 `json:"load_cycles_per_day"`
 }
 
 type SocialForceResponse struct {
-	AnalysisID     int                          `json:"analysis_id"`
-	BridgeID       int                          `json:"bridge_id"`
-	LoadSpectrum   []socialforce.LoadTimeStep   `json:"load_spectrum"`
-	MaxLoad        float64                      `json:"max_load"`
-	AvgLoad        float64                      `json:"avg_load"`
-	TotalAgents    int                          `json:"total_agents"`
-	Duration       float64                      `json:"duration"`
-	FatigueResult  *FatigueResultSummary        `json:"fatigue_result,omitempty"`
-	PeakLocations  []int                        `json:"peak_load_locations"`
+	AnalysisID    int                                    `json:"analysis_id"`
+	BridgeID      int                                    `json:"bridge_id"`
+	LoadSpectrum  []movingloadsimulator.LoadTimeStep     `json:"load_spectrum"`
+	MaxLoad       float64                                `json:"max_load"`
+	AvgLoad       float64                                `json:"avg_load"`
+	TotalAgents   int                                    `json:"total_agents"`
+	Duration      float64                                `json:"duration"`
+	FatigueResult *FatigueResultSummary                  `json:"fatigue_result,omitempty"`
+	PeakLocations []int                                  `json:"peak_load_locations"`
 }
 
 type FatigueResultSummary struct {
@@ -78,7 +76,7 @@ func (h *DynamicLoadHandler) SocialForceAnalysis(c *gin.Context) {
 		req.LoadCyclesPerDay = 500
 	}
 
-	sfm := socialforce.NewSocialForceModel(bridge.SpanLength)
+	sfm := movingloadsimulator.NewSocialForceModel(bridge.SpanLength)
 	if req.RandomSeed > 0 {
 		sfm.SetRandomSeed(req.RandomSeed)
 	}
@@ -113,33 +111,52 @@ func (h *DynamicLoadHandler) SocialForceAnalysis(c *gin.Context) {
 
 	var fatigueSummary *FatigueResultSummary
 
-	bridgeModel := fea.GenerateArchBridge(req.BridgeID, bridge.SpanLength, bridge.ArchRise, bridge.DeckWidth)
-	memberCount := len(bridgeModel.Structure.Members)
-
-	fa := fatigue.NewFatigueAnalysis(bridge.SpanLength, memberCount)
-	loadSpectrumValues := make([]float64, len(spectrum))
-	for i, ts := range spectrum {
-		loadSpectrumValues[i] = ts.TotalLoad
+	input := movingloadsimulator.AsyncInput{
+		BridgeID:         req.BridgeID,
+		SpanLength:       bridge.SpanLength,
+		ArchRise:         bridge.ArchRise,
+		DeckWidth:        bridge.DeckWidth,
+		Duration:         req.Duration,
+		CrowdDensity:     req.CrowdDensity,
+		TimeStep:         req.TimeStep,
+		RandomSeed:       req.RandomSeed,
+		LoadCyclesPerDay: req.LoadCyclesPerDay,
 	}
 
-	memberResults := make([]fatigue.MemberFatigueResult, 0, memberCount)
-	for i := 0; i < memberCount; i++ {
-		memberType := bridgeModel.MemberTypes[i+1]
-		stressHistory := fa.GenerateStressHistoryForSpectrum(loadSpectrumValues, i, memberCount)
-		result := fa.CalculateMemberFatigue(i+1, memberType, stressHistory, req.LoadCyclesPerDay)
-		memberResults = append(memberResults, result)
-	}
+	resultChan := movingloadsimulator.SimulateAsync(input)
+	asyncResult := <-resultChan
 
-	fatigueResult := fa.AggregateResults(memberResults)
-	recommendations := fa.GetFatigueRecommendations(fatigueResult)
-
-	fatigueSummary = &FatigueResultSummary{
-		TotalDamage:        fatigueResult.TotalDamage,
-		MaxDamageMemberID:  fatigueResult.MaxDamageMemberID,
-		EstimatedLifeYears: fatigueResult.EstimatedLifeYears,
-		HotspotMembers:     fatigueResult.HotspotMembers,
-		CriticalLocations:  fatigueResult.CriticalLocations,
-		Recommendations:    recommendations,
+	if asyncResult.Error != nil {
+		fa := movingloadsimulator.NewFatigueAnalysis(bridge.SpanLength, 40)
+		loadSpectrumValues := make([]float64, len(spectrum))
+		for i, ts := range spectrum {
+			loadSpectrumValues[i] = ts.TotalLoad
+		}
+		memberResults := make([]movingloadsimulator.MemberFatigueResult, 0, 40)
+		for i := 0; i < 40; i++ {
+			stressHistory := fa.GenerateStressHistoryForSpectrum(loadSpectrumValues, i, 40)
+			result := fa.CalculateMemberFatigue(i+1, "arch_rib", stressHistory, req.LoadCyclesPerDay)
+			memberResults = append(memberResults, result)
+		}
+		fatigueResult := fa.AggregateResults(memberResults)
+		recommendations := fa.GetFatigueRecommendations(fatigueResult)
+		fatigueSummary = &FatigueResultSummary{
+			TotalDamage:        fatigueResult.TotalDamage,
+			MaxDamageMemberID:  fatigueResult.MaxDamageMemberID,
+			EstimatedLifeYears: fatigueResult.EstimatedLifeYears,
+			HotspotMembers:     fatigueResult.HotspotMembers,
+			CriticalLocations:  fatigueResult.CriticalLocations,
+			Recommendations:    recommendations,
+		}
+	} else {
+		fatigueSummary = &FatigueResultSummary{
+			TotalDamage:        asyncResult.FatigueResult.TotalDamage,
+			MaxDamageMemberID:  asyncResult.FatigueResult.MaxDamageMemberID,
+			EstimatedLifeYears: asyncResult.FatigueResult.EstimatedLifeYears,
+			HotspotMembers:     asyncResult.FatigueResult.HotspotMembers,
+			CriticalLocations:  asyncResult.FatigueResult.CriticalLocations,
+			Recommendations:    movingloadsimulator.NewFatigueAnalysis(bridge.SpanLength, 40).GetFatigueRecommendations(asyncResult.FatigueResult),
+		}
 	}
 
 	response := SocialForceResponse{
