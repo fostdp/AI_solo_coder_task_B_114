@@ -58,16 +58,17 @@ type Member struct {
 }
 
 type TrussStructure struct {
-	Nodes     []*Node
-	Members   []*Member
-	NodeMap   map[int]*Node
-	MemberMap map[int]*Member
-	K         [][]float64
-	F         []float64
-	U         []float64
-	dofs      int
+	Nodes          []*Node
+	Members        []*Member
+	NodeMap        map[int]*Node
+	MemberMap      map[int]*Member
+	K              [][]float64
+	F              []float64
+	U              []float64
+	dofs           int
 	jointStiffness map[JointType]SemiRigidJoint
 	useSemiRigid   bool
+	MemberTypes    map[int]string
 }
 
 func NewTrussStructure() *TrussStructure {
@@ -76,6 +77,7 @@ func NewTrussStructure() *TrussStructure {
 		MemberMap:      make(map[int]*Member),
 		jointStiffness: defaultJointStiffness,
 		useSemiRigid:   true,
+		MemberTypes:    make(map[int]string),
 	}
 }
 
@@ -201,7 +203,7 @@ func (m *Member) LocalStiffnessSemiRigid() [6][6]float64 {
 	alphaS := ei / l
 	alphaE := ei / l
 
-	var k1, k2, k3, k4 float64
+	var k1, k4 float64
 	if js.Ktheta > 0 && js.Ktheta < 1.0 {
 		k1 = 4 * alphaS / (1 + 4*alphaS/js.Ktheta/ei)
 	} else {
@@ -469,12 +471,16 @@ func gaussElimination(A [][]float64, B []float64) ([]float64, error) {
 }
 
 type MemberForces struct {
-	MemberID      int
-	AxialForce    float64
-	ShearForce    float64
-	BendingMoment float64
-	AxialStress   float64
-	BendingStress float64
+	MemberID       int
+	AxialForce     float64
+	ShearForce     float64
+	BendingMoment  float64
+	AxialStress    float64
+	BendingStress  float64
+	NormalStress   float64
+	CombinedStress float64
+	StressRatio    float64
+	Length         float64
 }
 
 func (ts *TrussStructure) CalculateMemberForces() []MemberForces {
@@ -493,14 +499,32 @@ func (ts *TrussStructure) CalculateMemberForces() []MemberForces {
 		if member.I > 0 {
 			bendingStress = bendingMoment * (member.Length / 12) / member.I
 		}
+		normalStress := axialStress
+		combinedStress := normalStress + bendingStress
+
+		allowableStress := 8.5
+		memberType := ts.MemberTypes[member.ID]
+		if memberType == "deck_beam" {
+			allowableStress = 8.5
+		} else if memberType == "arch_rib" {
+			allowableStress = 8.5
+		}
+		stressRatio := 0.0
+		if allowableStress > 0 {
+			stressRatio = math.Abs(combinedStress) / allowableStress
+		}
 
 		forces = append(forces, MemberForces{
-			MemberID:      member.ID,
-			AxialForce:    axialForce,
-			ShearForce:    shearForce,
-			BendingMoment: bendingMoment,
-			AxialStress:   axialStress,
-			BendingStress: bendingStress,
+			MemberID:       member.ID,
+			AxialForce:     axialForce,
+			ShearForce:     shearForce,
+			BendingMoment:  bendingMoment,
+			AxialStress:    axialStress,
+			BendingStress:  bendingStress,
+			NormalStress:   normalStress,
+			CombinedStress: combinedStress,
+			StressRatio:    stressRatio,
+			Length:         member.Length,
 		})
 	}
 
@@ -653,4 +677,75 @@ func (ts *TrussStructure) calculateDisplacements() []NodeDisplacement {
 	}
 
 	return displacements
+}
+
+func (ts *TrussStructure) GetDOFs() int {
+	return ts.dofs
+}
+
+func (ts *TrussStructure) GetNodeDisplacements() []NodeDisplacement {
+	return ts.calculateDisplacements()
+}
+
+func (ts *TrussStructure) ApplyLoadMap(loads map[int]float64) {
+	ts.F = make([]float64, ts.dofs)
+	ts.U = make([]float64, ts.dofs)
+
+	for nodeID, fy := range loads {
+		nodeIdx := (nodeID - 1) * 3
+		if nodeIdx < ts.dofs {
+			ts.F[nodeIdx+1] = fy
+		}
+	}
+}
+
+func (ts *TrussStructure) CompareWithYingzaoFashi() []YingzaoComparison {
+	var comparisons []YingzaoComparison
+	memberForces := ts.CalculateMemberForces()
+	allowableStressDefault := 8.5
+	maxSpanRatioDefault := 12.0
+	minSectionModulusDefault := 300.0
+
+	for _, mf := range memberForces {
+		memberType := ts.MemberTypes[mf.MemberID]
+		member := ts.MemberMap[mf.MemberID]
+		if member == nil {
+			continue
+		}
+
+		sectionModulus := 0.0
+		if member.A > 0 {
+			sectionModulus = member.I / (member.A / 6.0)
+		}
+		actualSpanRatio := 0.0
+		if math.Sqrt(member.A) > 0 {
+			actualSpanRatio = member.Length / math.Sqrt(member.A)
+		}
+
+		allowableStress := allowableStressDefault
+		maxSpanRatio := maxSpanRatioDefault
+		minSectionModulus := minSectionModulusDefault
+
+		stressRatio := 0.0
+		if allowableStress > 0 {
+			stressRatio = math.Abs(mf.CombinedStress) / allowableStress
+		}
+		compliant := stressRatio <= 1.0 && actualSpanRatio <= maxSpanRatio
+
+		comparisons = append(comparisons, YingzaoComparison{
+			MemberID:          mf.MemberID,
+			MemberType:        memberType,
+			ActualStress:      mf.CombinedStress,
+			AllowableStress:   allowableStress,
+			StressRatio:       stressRatio,
+			MaxSpanRatio:      maxSpanRatio,
+			ActualSpanRatio:   actualSpanRatio,
+			SectionModulus:    sectionModulus,
+			MinSectionModulus: minSectionModulus,
+			Compliant:         compliant,
+			SpecGrade:         "",
+		})
+	}
+
+	return comparisons
 }
