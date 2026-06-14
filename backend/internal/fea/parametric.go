@@ -6,6 +6,7 @@ import (
 )
 
 type ParametricBridge struct {
+	BridgeID   int
 	BaseBridge *BridgeModel
 	MinSpan    float64
 	MaxSpan    float64
@@ -18,6 +19,7 @@ type ParametricBridge struct {
 func NewParametricBridge(bridgeID int, defaultSpan, defaultRise, defaultWidth float64) *ParametricBridge {
 	base := GenerateArchBridge(bridgeID, defaultSpan, defaultRise, defaultWidth)
 	return &ParametricBridge{
+		BridgeID:   bridgeID,
 		BaseBridge: base,
 		MinSpan:    10.0,
 		MaxSpan:    50.0,
@@ -65,7 +67,7 @@ func (pb *ParametricBridge) UpdateGeometry(span, rise, width float64) *BridgeMod
 		return pb.BaseBridge
 	}
 
-	newModel := GenerateArchBridge(pb.BaseBridge.BridgeName, span, rise, width)
+	newModel := GenerateArchBridge(pb.BridgeID, span, rise, width)
 
 	if len(newModel.Structure.Members) > 0 {
 		newModel.Structure.AssembleStiffness()
